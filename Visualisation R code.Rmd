@@ -1,0 +1,66 @@
+---
+title: "Visualisation homework - group b4"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message = FALSE)
+library(ggplot2)
+```
+
+The data is taken from http://insideairbnb.com/get-the-data.html
+where we are looking at the listings datasets between January 2019 and December 2019 in London.
+
+```{r}
+#if order of columns change use [,c("id","availability_30")] instead to select right columns
+#using colClasses to only read 2 of the columns in the file that we need
+listings1=read.csv("listings.csv",header = TRUE, sep = ",",dec = ".",colClasses=c(NA,rep('NULL',76), NA,rep('NULL',28))) 
+listings2=read.csv("listings-2.csv",header = TRUE, sep = ",",dec = ".",colClasses=c(NA,rep('NULL',76), NA,rep('NULL',28)))
+listings3=read.csv("listings-3.csv",header = TRUE, sep = ",",dec = ".",colClasses=c(NA,rep('NULL',76), NA,rep('NULL',28)))
+listings4=read.csv("listings-4.csv",header = TRUE, sep = ",",dec = ".",colClasses=c(NA,rep('NULL',76), NA,rep('NULL',28)))
+listings5=read.csv("listings-5.csv",header = TRUE, sep = ",",dec = ".",colClasses=c(NA,rep('NULL',76), NA,rep('NULL',28)))
+listings6=read.csv("listings-6.csv",header = TRUE, sep = ",",dec = ".",colClasses=c(NA,rep('NULL',76), NA,rep('NULL',28)))
+listings7=read.csv("listings-7.csv",header = TRUE, sep = ",",dec = ".",colClasses=c(NA,rep('NULL',76), NA,rep('NULL',28)))
+listings8=read.csv("listings-8.csv",header = TRUE, sep = ",",dec = ".",colClasses=c(NA,rep('NULL',76), NA,rep('NULL',28)))
+listings9=read.csv("listings-9.csv",header = TRUE, sep = ",",dec = ".",colClasses=c(NA,rep('NULL',76), NA,rep('NULL',28)))
+listings10=read.csv("listings-10.csv",header = TRUE, sep = ",",dec =".",colClasses=c(NA,rep('NULL',76), NA,rep('NULL',28)))
+listings11=read.csv("listings-11.csv",header = TRUE, sep = ",",dec =".",colClasses=c(NA,rep('NULL',76), NA,rep('NULL',28)))
+listings12=read.csv("listings-12.csv",header = TRUE, sep = ",",dec = ".")
+```
+
+The function to merge the 12 datasets and return the dataset of December 2019 with the sum of 30 days availability throughout the year.
+
+```{r}
+merging12<-function(listings1,listings2,listings3,listings4,listings5,listings6,listings7,listings8,listings9,listings10,listings11,listings12){
+  temp=merge(listings1,listings2, by="id",suffixes = c(".1",".2"))
+  temp=merge(temp,listings3, by="id",suffixes = c(".2",".3"))
+  temp=merge(temp,listings4, by="id",suffixes = c(".3",".4"))
+  temp=merge(temp,listings5, by="id",suffixes = c(".4",".5"))
+  temp=merge(temp,listings6, by="id",suffixes = c(".5",".6"))
+  temp=merge(temp,listings7, by="id",suffixes = c(".6",".7"))
+  temp=merge(temp,listings8, by="id",suffixes = c(".7",".8"))
+  temp=merge(temp,listings9, by="id",suffixes = c(".8",".9"))
+  temp=merge(temp,listings10, by="id",suffixes = c(".9",".10"))
+  temp=merge(temp,listings11, by="id",suffixes = c(".10",".11"))
+  temp=merge(temp,listings12[,c("id","availability_30")], by="id",suffixes = c(".11",".12"))
+  temp$sum_availabiliy_30=temp$availability_30.1 + temp$availability_30.2 + temp$availability_30.3 + temp$availability_30.4 + temp$availability_30.5 + temp$availability_30.6 + temp$availability_30.7 + temp$availability_30.8 + temp$availability_30.9 + temp$availability_30.10 + temp$availability_30.11 + temp$availability_30.12
+  result=merge(temp[,c("id","sum_availabiliy_30")],listings12, by="id")
+}
+```
+
+```{r}
+listings=merging12(listings1,listings2,listings3,listings4,listings5,listings6,listings7,listings8,listings9,listings10,listings11,listings12)
+print(listings[,c("id","sum_availabiliy_30","availability_30")])
+```
+
+
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
