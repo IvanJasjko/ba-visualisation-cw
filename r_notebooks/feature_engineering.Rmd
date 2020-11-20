@@ -1,0 +1,81 @@
+## Airbnb Listings Feature Generation
+Scraped London listings in Airbnb from Dec 7 2019.
+```{r}
+library(dplyr)
+library(stringr)
+library(tidyr)
+```
+
+### Importing csv file
+Remember to decompress the gzip file before importing the csv.
+```{r}
+filepath = "../data/london_dec_19_listings.csv"
+raw_data = read.csv(filepath)
+```
+
+### Selecting columns that might be useful for generating features
+```{r}
+feature_candidates = c("neighbourhood_cleansed", "price",
+                       "property_type", "room_type", "bathrooms",
+                       "bedrooms", "beds", "amenities", "minimum_nights", 
+                      "maximum_nights", "availability_30",
+                      "number_of_reviews", "number_of_reviews_ltm",
+                      "first_review", "name", "host_identity_verified",
+                      "review_scores_accuracy", "review_scores_cleanliness",
+                      "review_scores_checkin", "review_scores_communication",
+                      "review_scores_location", "review_scores_value",
+                      "instant_bookable","reviews_per_month", "latitude",
+                      "longitude", "accommodates",
+                      "description", "neighborhood_overview",
+                      "host_since", "host_about", "host_response_time",
+                      "host_response_rate", "host_acceptance_rate",
+                      "host_is_superhost", "host_has_profile_pic")
+```
+Features noted but not in the 2019 dataset: bathrooms_text, number_of_reviews_l30d
+Note: Features tend to change between  datasets
+
+```{r}
+raw_features = raw_data %>% select(feature_candidates)
+```
+
+### COnverting prices to numeric values and adding flat_size
+flat_size: A grouping where L means large flats (more than 4 guest) and S means small flats for up to 4 guests.
+```{r}
+#Converting string price to doubles and removing junk
+raw_features = raw_features %>% filter(!is.na(price)) %>%
+  mutate(num_price = as.numeric(str_replace_all(str_sub(price, 2), ",", ""))) %>%
+  filter(num_price > 0) %>% 
+  mutate(flat_size = ifelse(accommodates > 4, "L", "S"))
+```
+
+
+### Adding regional price levels 1 - cheapest, 4 - most expensive
+```{r}
+get_price_level = function(price, p25, p50, p75) {
+  return(ifelse(price <= p25, 1,
+         ifelse(price <= p50, 2,
+         ifelse(price <=p75, 3, 4))))
+}
+
+price_groups = raw_features %>% 
+  group_by_(.dots=c("neighbourhood_cleansed", "flat_size")) %>%
+  summarize(p25 = quantile(num_price, .25), p50 = quantile(num_price, .50), p75 = quantile(num_price, .75))
+
+price_features = left_join(raw_features, price_groups, by = c("neighbourhood_cleansed", "flat_size"))
+price_features = price_features %>% mutate(price_level = get_price_level(num_price, p25, p50, p75))
+```
+### Use price_features dataframe for further improvements
+```{r}
+
+```
+
+
+
+```{r}
+price_features %>% 
+  group_by(neighbourhood_cleansed, flat_size, price_level) %>% 
+  summarise(min_price = min(num_price), avg_price = mean(num_price), max_price = max(num_price), n_flats = length(num_price))
+```
+
+
+
