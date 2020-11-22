@@ -20,6 +20,7 @@ raw_data = read.csv(filepath)
 
 firs_review_cutoff = "2019-01-01"
 avg_stay = 5.1 # avg length of stay in city
+superhost_score = 0.75
 ```
 
 ### Selecting columns that might be useful for generating features
@@ -85,6 +86,8 @@ get_kpi = function(number_of_reviews, last_scraped, first_review, avg_stay) {
 
 kpi_data = price_features %>% mutate(
   kpi = get_kpi(number_of_reviews, last_scraped, first_review, avg_stay))
+
+kpi_data %>% mutate(superhost = if_else(kpi > superhost_score, 1, 0))
 ```
 
 ### Use kpi_data dataframe for further improvements (feel free to delete this cell)
