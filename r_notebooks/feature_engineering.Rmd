@@ -1,24 +1,31 @@
+---
+output:
+  html_document: default
+  pdf_document: default
+---
 ## Airbnb Listings Feature Generation
 Scraped London listings in Airbnb from Dec 7 2019.
 ```{r}
 library(dplyr)
 library(stringr)
 library(tidyr)
+library(ggplot2)
 ```
 
 ### Importing csv file
 Remember to decompress the gzip file before importing the csv.
 ```{r}
 filepath = "../data/london_dec_19_listings.csv"
+firs_review_cutoff = "2019-01-01"
 raw_data = read.csv(filepath)
 ```
 
 ### Selecting columns that might be useful for generating features
 ```{r}
-feature_candidates = c("neighbourhood_cleansed", "price",
+feature_candidates = c("neighbourhood_cleansed", "price", "last_scraped",
                        "property_type", "room_type", "bathrooms",
-                       "bedrooms", "beds", "amenities", "minimum_nights", 
-                      "maximum_nights", "availability_30",
+                       "bedrooms", "beds", "amenities", "minimum_nights",
+                      "maximum_nights", "availability_30", "first_review",
                       "number_of_reviews", "number_of_reviews_ltm",
                       "first_review", "name", "host_identity_verified",
                       "review_scores_accuracy", "review_scores_cleanliness",
@@ -35,7 +42,9 @@ Features noted but not in the 2019 dataset: bathrooms_text, number_of_reviews_l3
 Note: Features tend to change between  datasets
 
 ```{r}
-raw_features = raw_data %>% select(feature_candidates)
+raw_features = raw_data %>% 
+  select(feature_candidates) %>% 
+  filter(number_of_reviews_ltm > 0, first_review < firs_review_cutoff)
 ```
 
 ### COnverting prices to numeric values and adding flat_size
@@ -66,16 +75,16 @@ price_features = price_features %>% mutate(price_level = get_price_level(num_pri
 ```
 ### Use price_features dataframe for further improvements
 ```{r}
-
+price_features
 ```
-
-
 
 ```{r}
-price_features %>% 
-  group_by(neighbourhood_cleansed, flat_size, price_level) %>% 
-  summarise(min_price = min(num_price), avg_price = mean(num_price), max_price = max(num_price), n_flats = length(num_price))
+```
+```{r}
 ```
 
+```{r}
+```
 
-
+```{r}
+```
