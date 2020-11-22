@@ -16,8 +16,11 @@ library(ggplot2)
 Remember to decompress the gzip file before importing the csv.
 ```{r}
 filepath = "../data/london_dec_19_listings.csv"
-firs_review_cutoff = "2019-01-01"
 raw_data = read.csv(filepath)
+
+firs_review_cutoff = "2019-01-01"
+percent_review = 0.5 # percentage of airbnb guests who leave reviews
+avg_stay = 5.1 # avg length of stay in city
 ```
 
 ### Selecting columns that might be useful for generating features
@@ -73,13 +76,27 @@ price_groups = raw_features %>%
 price_features = left_join(raw_features, price_groups, by = c("neighbourhood_cleansed", "flat_size"))
 price_features = price_features %>% mutate(price_level = get_price_level(num_price, p25, p50, p75))
 ```
-### Use price_features dataframe for further improvements
-```{r}
-price_features
-```
 
 ```{r}
+get_kpi = function(number_of_reviews, last_scraped, first_review, percent_review, avg_stay) {
+  day_delta = round(as.numeric(difftime(last_scraped, first_review, units="days")))
+  occupancy_rate = number_of_reviews * avg_stay / day_delta
+  return(if_else(occupancy_rate > 1, 1, occupancy_rate))
+}
+
+kpi_data = price_features %>% mutate(
+  kpi = get_kpi(number_of_reviews, last_scraped, first_review, percent_review, avg_stay))
 ```
+
+### Use kpi_data dataframe for further improvements (feel free to delete this cell)
+```{r}
+ggplot(data=kpi_data) +
+  geom_histogram(aes(kpi))
+
+kpi_data
+```
+
+
 ```{r}
 ```
 
