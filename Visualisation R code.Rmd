@@ -6,6 +6,7 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(message = FALSE)
 library(ggplot2)
+library(dplyr)
 ```
 
 The data is taken from http://insideairbnb.com/get-the-data.html
@@ -50,10 +51,8 @@ merging12<-function(listings1,listings2,listings3,listings4,listings5,listings6,
 
 ```{r}
 listings=merging12(listings1,listings2,listings3,listings4,listings5,listings6,listings7,listings8,listings9,listings10,listings11,listings12)
-print(listings[,c("id","sum_availabiliy_30","availability_30")])
+filter(listings12, first_review<'2018-01-01', first_review!='')
 ```
-
-
 
 ## Including Plots
 
