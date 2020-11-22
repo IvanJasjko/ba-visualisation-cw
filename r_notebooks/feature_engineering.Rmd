@@ -19,7 +19,6 @@ filepath = "../data/london_dec_19_listings.csv"
 raw_data = read.csv(filepath)
 
 firs_review_cutoff = "2019-01-01"
-percent_review = 0.5 # percentage of airbnb guests who leave reviews
 avg_stay = 5.1 # avg length of stay in city
 ```
 
@@ -78,14 +77,14 @@ price_features = price_features %>% mutate(price_level = get_price_level(num_pri
 ```
 ### Adding KPI to the dataset
 ```{r}
-get_kpi = function(number_of_reviews, last_scraped, first_review, percent_review, avg_stay) {
+get_kpi = function(number_of_reviews, last_scraped, first_review, avg_stay) {
   day_delta = round(as.numeric(difftime(last_scraped, first_review, units="days")))
   occupancy_rate = number_of_reviews * avg_stay / day_delta
   return(if_else(occupancy_rate > 1, 1, occupancy_rate))
 }
 
 kpi_data = price_features %>% mutate(
-  kpi = get_kpi(number_of_reviews, last_scraped, first_review, percent_review, avg_stay))
+  kpi = get_kpi(number_of_reviews, last_scraped, first_review, avg_stay))
 ```
 
 ### Use kpi_data dataframe for further improvements (feel free to delete this cell)

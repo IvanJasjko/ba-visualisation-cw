@@ -448,7 +448,6 @@ library(ggplot2)</code></pre>
 raw_data = read.csv(filepath)
 
 firs_review_cutoff = &quot;2019-01-01&quot;
-percent_review = 0.5 # percentage of airbnb guests who leave reviews
 avg_stay = 5.1 # avg length of stay in city</code></pre>
 </div>
 <div id="selecting-columns-that-might-be-useful-for-generating-features" class="section level3">
@@ -508,14 +507,14 @@ price_features = price_features %&gt;% mutate(price_level = get_price_level(num_
 </div>
 <div id="adding-kpi-to-the-dataset" class="section level3">
 <h3>Adding KPI to the dataset</h3>
-<pre class="r"><code>get_kpi = function(number_of_reviews, last_scraped, first_review, percent_review, avg_stay) {
+<pre class="r"><code>get_kpi = function(number_of_reviews, last_scraped, first_review, avg_stay) {
   day_delta = round(as.numeric(difftime(last_scraped, first_review, units=&quot;days&quot;)))
   occupancy_rate = number_of_reviews * avg_stay / day_delta
   return(if_else(occupancy_rate &gt; 1, 1, occupancy_rate))
 }
 
 kpi_data = price_features %&gt;% mutate(
-  kpi = get_kpi(number_of_reviews, last_scraped, first_review, percent_review, avg_stay))</code></pre>
+  kpi = get_kpi(number_of_reviews, last_scraped, first_review, avg_stay))</code></pre>
 </div>
 <div id="use-kpi_data-dataframe-for-further-improvements-feel-free-to-delete-this-cell" class="section level3">
 <h3>Use kpi_data dataframe for further improvements (feel free to delete this cell)</h3>
