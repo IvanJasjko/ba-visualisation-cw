@@ -76,7 +76,7 @@ price_groups = raw_features %>%
 price_features = left_join(raw_features, price_groups, by = c("neighbourhood_cleansed", "flat_size"))
 price_features = price_features %>% mutate(price_level = get_price_level(num_price, p25, p50, p75))
 ```
-
+### Adding KPI to the dataset
 ```{r}
 get_kpi = function(number_of_reviews, last_scraped, first_review, percent_review, avg_stay) {
   day_delta = round(as.numeric(difftime(last_scraped, first_review, units="days")))
@@ -93,7 +93,7 @@ kpi_data = price_features %>% mutate(
 ggplot(data=kpi_data) +
   geom_histogram(aes(kpi))
 
-kpi_data
+head(kpi_data, 5)
 ```
 
 
