@@ -5,12 +5,22 @@ output:
 ---
 ## Airbnb Listings Feature Generation
 Scraped London listings in Airbnb from Dec 7 2019.
+
+```{r}
+requirements <- c("ggplot2", "dplyr", "stringr", "tidyr", "ggrepel", "splitstackshape")
+missing_reqs <- requirements[!(requirements %in% installed.packages()[,"Package"])]
+if(length(missing_reqs)) install.packages(missing_reqs)
+```
+
 ```{r}
 library(dplyr)
 library(stringr)
 library(tidyr)
 library(ggplot2)
+library(ggrepel)
+library(splitstackshape)
 ```
+
 
 ### Importing csv file
 Remember to decompress the gzip file before importing the csv.
@@ -18,7 +28,7 @@ Remember to decompress the gzip file before importing the csv.
 filepath = "../data/london_dec_19_listings.csv"
 raw_data = read.csv(filepath)
 
-firs_review_cutoff = "2019-01-01"
+first_review_cutoff = "2019-01-01"
 avg_stay = 5.1 # avg length of stay in city
 superhost_score = 0.75
 ```
@@ -46,8 +56,8 @@ Note: Features tend to change between  datasets
 
 ```{r}
 raw_features = raw_data %>% 
-  select(feature_candidates) %>% 
-  filter(number_of_reviews_ltm > 0, first_review < firs_review_cutoff)
+  select(all_of(feature_candidates)) %>% 
+  filter(number_of_reviews_ltm > 0, first_review < first_review_cutoff)
 ```
 
 ### COnverting prices to numeric values and adding flat_size
@@ -64,9 +74,9 @@ raw_features = raw_features %>% filter(!is.na(price)) %>%
 ### Adding regional price levels 1 - cheapest, 4 - most expensive
 ```{r}
 get_price_level = function(price, p25, p50, p75) {
-  return(ifelse(price <= p25, 1,
-         ifelse(price <= p50, 2,
-         ifelse(price <=p75, 3, 4))))
+  return(ifelse(price <= p25, "1",
+         ifelse(price <= p50, "2",
+         ifelse(price <=p75, "3", "4"))))
 }
 
 price_groups = raw_features %>% 
@@ -86,24 +96,29 @@ get_kpi = function(number_of_reviews, last_scraped, first_review, avg_stay) {
 
 kpi_data = price_features %>% mutate(
   kpi = get_kpi(number_of_reviews, last_scraped, first_review, avg_stay))
-
-kpi_data %>% mutate(superhost = if_else(kpi > superhost_score, 1, 0))
 ```
 
-### Use kpi_data dataframe for further improvements (feel free to delete this cell)
+### Adding amenities
 ```{r}
-ggplot(data=kpi_data) +
-  geom_histogram(aes(kpi))
+trim_amenities = function(amenity) {
+  regex = regex("([}{\"])|(translation missing:.*)|[â€™]|(\\(s\\))")
+  a1 = str_replace_all(amenity, regex, "")
+  a2 = tolower(str_replace_all(a1, "[/  -]", "_"))
+  a3 = str_replace_all(a2, regex(",,"), ",")
+  return(trimws(a3, whitespace=","))
+}
 
-head(kpi_data, 5)
+kpi_data = kpi_data %>% mutate(a = trim_amenities(amenities))
+wide_data = cSplit_e(kpi_data, "a", ",", type = "character", fill = 0, drop = F)
 ```
 
-
+### Use wid_data dataframe thati includes all amenities (Feel free to remove all cells below)
 ```{r}
+head(wide_data)
 ```
-
 ```{r}
-```
-
-```{r}
+ggplot(data=wide_data) +
+  geom_area(aes(x = kpi, y = ..count.., fill=as.character(a_smoke_detector)), stat = "bin",
+            binwidth=0.015, color="darkblue", alpha=0.5)+
+  labs(fill="a_smoke_detector")
 ```
