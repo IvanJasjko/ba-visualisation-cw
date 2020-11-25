@@ -11,7 +11,7 @@
 
 
 
-<title>visualisations_ivan.utf8</title>
+<title>feature_engineering.utf8</title>
 
 <script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
 // be compatible with the behavior of Pandoc < 2.8).
@@ -479,7 +479,7 @@ superhost_score = 0.75</code></pre>
   filter(number_of_reviews_ltm &gt; 0, first_review &lt; first_review_cutoff)</code></pre>
 </div>
 <div id="converting-prices-to-numeric-values-and-adding-flat_size" class="section level3">
-<h3>COnverting prices to numeric values and adding flat_size</h3>
+<h3>Converting prices to numeric values and adding flat_size</h3>
 <p>flat_size: A grouping where L means large flats (more than 4 guest) and S means small flats for up to 4 guests.</p>
 <pre class="r"><code>#Converting string price to doubles and removing junk
 raw_features = raw_features %&gt;% filter(!is.na(price)) %&gt;%
@@ -507,8 +507,8 @@ price_groups = raw_features %&gt;%
 <pre class="r"><code>price_features = left_join(raw_features, price_groups, by = c(&quot;neighbourhood_cleansed&quot;, &quot;flat_size&quot;))
 price_features = price_features %&gt;% mutate(price_level = get_price_level(num_price, p25, p50, p75))</code></pre>
 </div>
-<div id="adding-kpi-to-the-dataset" class="section level3">
-<h3>Adding KPI to the dataset</h3>
+<div id="adding-kpis-to-the-dataset" class="section level3">
+<h3>Adding KPIs to the dataset</h3>
 <pre class="r"><code>get_kpi = function(number_of_reviews, last_scraped, first_review, avg_stay) {
   day_delta = round(as.numeric(difftime(last_scraped, first_review, units=&quot;days&quot;)))
   occupancy_rate = number_of_reviews * avg_stay / day_delta

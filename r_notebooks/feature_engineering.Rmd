@@ -12,6 +12,7 @@ missing_reqs <- requirements[!(requirements %in% installed.packages()[,"Package"
 if(length(missing_reqs)) install.packages(missing_reqs)
 ```
 
+
 ```{r}
 library(dplyr)
 library(stringr)
@@ -20,7 +21,6 @@ library(ggplot2)
 library(ggrepel)
 library(splitstackshape)
 ```
-
 
 ### Importing csv file
 Remember to decompress the gzip file before importing the csv.
@@ -60,7 +60,7 @@ raw_features = raw_data %>%
   filter(number_of_reviews_ltm > 0, first_review < first_review_cutoff)
 ```
 
-### COnverting prices to numeric values and adding flat_size
+### Converting prices to numeric values and adding flat_size
 flat_size: A grouping where L means large flats (more than 4 guest) and S means small flats for up to 4 guests.
 ```{r}
 #Converting string price to doubles and removing junk
@@ -69,7 +69,6 @@ raw_features = raw_features %>% filter(!is.na(price)) %>%
   filter(num_price > 0) %>% 
   mutate(flat_size = ifelse(accommodates > 4, "L", "S"))
 ```
-
 
 ### Adding regional price levels 1 - cheapest, 4 - most expensive
 ```{r}
@@ -86,7 +85,8 @@ price_groups = raw_features %>%
 price_features = left_join(raw_features, price_groups, by = c("neighbourhood_cleansed", "flat_size"))
 price_features = price_features %>% mutate(price_level = get_price_level(num_price, p25, p50, p75))
 ```
-### Adding KPI to the dataset
+
+### Adding KPIs to the dataset
 ```{r}
 get_kpi = function(number_of_reviews, last_scraped, first_review, avg_stay) {
   day_delta = round(as.numeric(difftime(last_scraped, first_review, units="days")))
