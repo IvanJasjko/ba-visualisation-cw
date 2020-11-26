@@ -112,10 +112,11 @@ kpi_data = kpi_data %>% mutate(a = trim_amenities(amenities))
 wide_data = cSplit_e(kpi_data, "a", ",", type = "character", fill = 0, drop = F)
 ```
 
-### Use wid_data dataframe thati includes all amenities (Feel free to remove all cells below)
+### Use wide_data dataframe that includes all amenities (Feel free to remove all cells below)
 ```{r}
 head(wide_data)
 ```
+
 ```{r}
 ggplot(data=wide_data) +
   geom_area(aes(x = kpi, y = ..count.., fill=as.character(a_smoke_detector)), stat = "bin",
