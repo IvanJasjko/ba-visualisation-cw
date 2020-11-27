@@ -98,6 +98,18 @@ kpi_data = price_features %>% mutate(
   kpi = get_kpi(number_of_reviews, last_scraped, first_review, avg_stay))
 ```
 
+### Adding good and bad perforance to the dataset
+```{r}
+get_performance_level = function(kpi) {
+  return(ifelse(kpi <= quantile(kpi, .25), "low",
+         ifelse(kpi <= quantile(kpi, .50), NaN,
+         ifelse(kpi <= quantile(kpi, .75), NaN, "high"))))
+}
+kpi_data = kpi_data %>% mutate(
+  kpi_score = get_performance_level(kpi))
+```
+
+
 ### Adding amenities
 ```{r}
 trim_amenities = function(amenity) {
