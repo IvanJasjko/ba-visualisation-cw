@@ -27,13 +27,14 @@ listings9=read.csv("listings-9.csv",header = TRUE, sep = ",",dec = ".",colClasse
 listings10=read.csv("listings-10.csv",header = TRUE, sep = ",",dec =".",colClasses=c(NA,rep('NULL',76), NA,rep('NULL',28)))
 listings11=read.csv("listings-11.csv",header = TRUE, sep = ",",dec =".",colClasses=c(NA,rep('NULL',76), NA,rep('NULL',28)))
 listings12=read.csv("listings-12.csv",header = TRUE, sep = ",",dec = ".")
+
 ```
 
 The function to merge the 12 datasets and return the dataset of December 2019 with the sum of 30 days availability throughout the year.
 
 ```{r}
 merging12<-function(listings1,listings2,listings3,listings4,listings5,listings6,listings7,listings8,listings9,listings10,listings11,listings12){
-  temp=merge(listings1,listings2, by="id",suffixes = c(".1",".2"))
+  temp=merge(listings1,listings2, by="id",suffixes = c(".1",".2"), )
   temp=merge(temp,listings3, by="id",suffixes = c(".2",".3"))
   temp=merge(temp,listings4, by="id",suffixes = c(".3",".4"))
   temp=merge(temp,listings5, by="id",suffixes = c(".4",".5"))
@@ -50,16 +51,40 @@ merging12<-function(listings1,listings2,listings3,listings4,listings5,listings6,
 ```
 
 ```{r}
+percent_review <- 0.5 # percentage of airbnb guests who leave reviews
+avg_stay <- 5.1 # avg length of stay in city
+
+kpi <- function(data){
+  data <- data[!is.na(data$first_review) & !is.na(data$review_scores_rating),]
+  data$diff_in_days = round(as.numeric(difftime(data$last_scraped, data$first_review, units = "days")))
+  data$adj_reviews <- data$number_of_reviews / percent_review
+  data$total_stays <- data$adj_reviews * avg_stay
+  data$occupancy_rate1 <- data$total_stays / data$diff_in_days # least conservative
+  data$occupancy_rate2 <- (data$number_of_reviews * avg_stay) / data$diff_in_days
+  data$occupancy_rate3 <- (data$number_of_reviews * data$minimum_nights) / data$diff_in_days # most conservative
+  data$occupancy_rate1[data$occupancy_rate1 > 1] = 1
+  data$occupancy_rate2[data$occupancy_rate2 > 1] = 1
+  data$occupancy_rate3[data$occupancy_rate3 > 1] = 1
+  data$kpi1 <- 0.25*(data$review_scores_rating^2/100^2)+0.75*data$occupancy_rate1 # least conservative
+  data$kpi2 <- 0.25*(data$review_scores_rating^2/100^2)+0.75*data$occupancy_rate2
+  data$kpi3 <- 0.25*(data$review_scores_rating^2/100^2)+0.75*data$occupancy_rate3 # most conservative
+  return(data)
+}
+```
+
+```{r}
+#plotting the frequency of occupancy for our 4 possibles KPIs
 listings=merging12(listings1,listings2,listings3,listings4,listings5,listings6,listings7,listings8,listings9,listings10,listings11,listings12)
-filter(listings12, first_review<'2018-01-01', first_review!='')
+listings=filter(listings, first_review<'2019-01-01', number_of_reviews_ltm>0)
+listings$availability_estimation=(365 - listings$sum_availabiliy_30)/365
+listings=kpi(listings)
+ggplot(listings) + geom_freqpoly(aes(x=kpi1), color="blue")  + geom_freqpoly(aes(x=kpi2), colour="red")  + geom_freqpoly(aes(x=kpi3), color="yellow") + geom_freqpoly(aes(x=availability_estimation))
 ```
 
-## Including Plots
 
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
+```{r}
+filter(listings12, first_review<'2019-01-01', number_of_reviews_ltm>0)
+unique(listings12$neighbourhood_cleansed)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
