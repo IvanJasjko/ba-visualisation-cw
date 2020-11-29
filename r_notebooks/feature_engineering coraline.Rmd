@@ -1,0 +1,213 @@
+---
+output:
+  html_document: default
+  pdf_document: default
+---
+## Airbnb Listings Feature Generation
+Scraped London listings in Airbnb from Dec 7 2019.
+
+```{r}
+requirements <- c("ggplot2", "dplyr", "stringr", "tidyr", "ggrepel", "splitstackshape", "stringr","RColorBrewer","OIdata")
+missing_reqs <- requirements[!(requirements %in% installed.packages()[,"Package"])]
+if(length(missing_reqs)) install.packages(missing_reqs)
+```
+
+
+```{r}
+library(dplyr)
+library(stringr)
+library(tidyr)
+library(ggplot2)
+library(ggrepel)
+library(splitstackshape)
+library(stringr)
+library(RColorBrewer)
+library(OIdata)
+```
+
+### Importing csv file
+Remember to decompress the gzip file before importing the csv.
+```{r}
+filepath = "../data/london_dec_19_listings.csv"
+raw_data = read.csv(filepath)
+
+first_review_cutoff = "2019-01-01"
+avg_stay = 5.1 # avg length of stay in city
+superhost_score = 0.75
+```
+
+### Selecting columns that might be useful for generating features
+```{r}
+feature_candidates = c("neighbourhood_cleansed", "price", "last_scraped",
+                       "property_type", "room_type", "bathrooms",
+                       "bedrooms", "beds", "amenities", "minimum_nights",
+                      "maximum_nights", "availability_30", "first_review",
+                      "number_of_reviews", "number_of_reviews_ltm",
+                      "first_review", "name", "host_identity_verified",
+                      "review_scores_accuracy", "review_scores_cleanliness",
+                      "review_scores_checkin", "review_scores_communication",
+                      "review_scores_location", "review_scores_value",
+                      "instant_bookable","reviews_per_month", "latitude",
+                      "longitude", "accommodates",
+                      "description", "neighborhood_overview",
+                      "host_since", "host_about", "host_response_time",
+                      "host_response_rate", "host_acceptance_rate",
+                      "host_is_superhost", "host_has_profile_pic")
+```
+Features noted but not in the 2019 dataset: bathrooms_text, number_of_reviews_l30d
+Note: Features tend to change between  datasets
+
+```{r}
+raw_features = raw_data %>% 
+  select(all_of(feature_candidates)) %>% 
+  filter(number_of_reviews_ltm > 0, first_review < first_review_cutoff)
+```
+
+### Converting prices to numeric values and adding flat_size
+flat_size: A grouping where L means large flats (more than 4 guest) and S means small flats for up to 4 guests.
+```{r}
+#Converting string price to doubles and removing junk
+raw_features = raw_features %>% filter(!is.na(price)) %>%
+  mutate(num_price = as.numeric(str_replace_all(str_sub(price, 2), ",", ""))) %>%
+  filter(num_price > 0) %>% 
+  mutate(flat_size = ifelse(accommodates > 4, "L", "S"))
+```
+
+### Adding regional price levels 1 - cheapest, 4 - most expensive
+```{r}
+get_price_level = function(price, p25, p50, p75) {
+  return(ifelse(price <= p25, "1",
+         ifelse(price <= p50, "2",
+         ifelse(price <=p75, "3", "4"))))
+}
+
+price_groups = raw_features %>% 
+  group_by_(.dots=c("neighbourhood_cleansed", "flat_size")) %>%
+  summarize(p25 = quantile(num_price, .25), p50 = quantile(num_price, .50), p75 = quantile(num_price, .75))
+
+price_features = left_join(raw_features, price_groups, by = c("neighbourhood_cleansed", "flat_size"))
+price_features = price_features %>% mutate(price_level = get_price_level(num_price, p25, p50, p75))
+```
+
+### Adding KPIs to the dataset
+```{r}
+get_kpi = function(number_of_reviews, last_scraped, first_review, avg_stay) {
+  day_delta = round(as.numeric(difftime(last_scraped, first_review, units="days")))
+  occupancy_rate = number_of_reviews * avg_stay / day_delta
+  return(if_else(occupancy_rate > 1, 1, occupancy_rate))
+}
+
+kpi_data = price_features %>% mutate(
+  kpi = get_kpi(number_of_reviews, last_scraped, first_review, avg_stay))
+```
+
+### Adding good and bad perforance to the dataset
+```{r}
+get_performance_level = function(kpi) {
+  return(ifelse(kpi <= quantile(kpi, .25), "low",
+         ifelse(kpi <= quantile(kpi, .50), NaN,
+         ifelse(kpi <= quantile(kpi, .75), NaN, "high"))))
+}
+kpi_data = kpi_data %>% mutate(
+  kpi_score = get_performance_level(kpi))
+```
+
+### Adding amenities
+```{r}
+trim_amenities = function(amenity) {
+  regex = regex("([}{\"])|(translation missing:.*)|[â€™]|(\\(s\\))")
+  a1 = str_replace_all(amenity, regex, "")
+  a2 = tolower(str_replace_all(a1, "[/  -]", "_"))
+  a3 = str_replace_all(a2, regex(",,"), ",")
+  return(trimws(a3, whitespace=","))
+}
+
+kpi_data = kpi_data %>% mutate(a = trim_amenities(amenities))
+wide_data = cSplit_e(kpi_data, "a", ",", type = "character", fill = 0, drop = F)
+```
+
+### Looking at postings info
+```{r}
+#"name", "instant_bookable", "description", "neighborhood_overview", "minimum_nights",
+#"maximum_nights", "availability_30", "accommodates"
+
+p <- function(v) {
+  Reduce(f=paste, x = v)
+}
+
+description_analysis=kpi_data %>%
+  select(neighbourhood_cleansed, description,kpi_score) %>%
+  filter(kpi_score=="low"| kpi_score=="high")
+description_analysis$description_cleansed=str_to_lower(description_analysis$description)
+description_analysis=description_analysis %>%
+  group_by(neighbourhood_cleansed,kpi_score) %>%
+  summarise(descrip = p(description_cleansed))
+description_analysis$descrip=str_replace_all(description_analysis$descrip, "[^[:alnum:]]", "")
+description_analysis$descrip=str_split(description_analysis$descrip, boundary("word"))
+```
+
+```{r}
+#summary, name, experiences_offered,neighborhood_overview,notes,transit,access,interaction,house_rules,instant_bookable
+```
+
+
+```{r}
+description_best <- data.frame(matrix(ncol = 3, nrow = 33))
+colnames(description_best) <- c('neighbourhood', 'high_kpi_descript', 'low_kpi_descript')
+j=1
+for (i in 1:nrow(description_analysis)){
+  description_analysis$descrip[[i]]=description_analysis$descrip[[i]][!description_analysis$descrip[[i]] %in% c("the","a","is","to","and","with","in","of","for","from","are","will","our","you","your","it","by","be","we","on","very","or","has","have","this","at","can","room")]
+  if(description_analysis$kpi_score[[i]]=="high"){
+    description_best$neighbourhood[j]=description_analysis$neighbourhood_cleansed[[i]]
+    description_best$high_kpi_descript[j]=sort(table(description_analysis$descrip[[i]]),decreasing = TRUE)[1]
+  }
+  else{
+    description_best$low_kpi_descript[j]=sort(table(description_analysis$descrip[[i]]),decreasing = TRUE)[1]
+    j=j+1
+  }
+}
+
+```
+
+
+```{r}
+description_best
+unique(description_analysis$descrip[[1]])
+#sort(table(description_analysis$descrip[[i]]),decreasing = TRUE)
+```
+
+
+
+```{r}
+data(london_boroughs)
+LB=london_boroughs
+LB$name=gsub( "&", "and",LB$name)  #to make them match with our dataset
+# merge datasets together
+text_map <- LB %>% 
+  left_join(description_best, by = c("name"="neighbourhood"))
+text_map=na.omit(text_map) #delete rows with NA is resulting join
+
+summary=text_map %>% 
+  group_by(name) %>% 
+  summarise(mean_long = mean(x),
+            mean_lat = mean(y),
+            low_kpi_descript = first(low_kpi_descript),
+            high_kpi_descript = first(high_kpi_descript))
+
+
+# London map
+ggplot()+geom_polygon(data=text_map, aes(x=x, y=y, group = name),colour="grey", fill="white") +
+  geom_text(data=summary,aes(x=mean_long, y=mean_lat, label = high_kpi_descript ))
+
+```
+
+
+```{r}
+data(london_boroughs)
+LB=london_boroughs
+LB$name=gsub( "&", "and",LB$name)
+LB
+```
+
+
+
