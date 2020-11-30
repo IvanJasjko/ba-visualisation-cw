@@ -1,0 +1,223 @@
+---
+output:
+  html_document: 
+    fig_width: 10
+    fig_height: 7
+  pdf_document: default
+editor_options: 
+  chunk_output_type: inline
+---
+## Airbnb Listings Feature Generation
+Scraped London listings in Airbnb from Dec 7 2019.
+
+```{r}
+requirements <- c("ggplot2", "dplyr", "stringr", "tidyr", "ggrepel", "splitstackshape", "devtools")
+missing_reqs <- requirements[!(requirements %in% installed.packages()[,"Package"])]
+
+#devtools::install_github("cardiomoon/ggiraphExtra")
+```
+
+
+```{r}
+library(dplyr)
+library(stringr)
+library(tidyr)
+library(ggplot2)
+library(ggrepel)
+library(splitstackshape)
+library(ggiraphExtra)
+library(lineupjs)
+```
+
+### Importing csv file
+Remember to decompress the gzip file before importing the csv.
+```{r}
+filepath = "../data/london_dec_19_listings.csv"
+raw_data = read.csv(filepath)
+
+first_review_cutoff = "2019-01-01"
+avg_stay = 5.1 # avg length of stay in city
+superhost_score = 0.75
+```
+
+### Selecting columns that might be useful for generating features
+```{r}
+feature_candidates = c("neighbourhood_cleansed", "price", "last_scraped",
+                       "property_type", "room_type", "bathrooms",
+                       "bedrooms", "beds", "amenities", "minimum_nights",
+                      "maximum_nights", "availability_30", "first_review",
+                      "number_of_reviews", "number_of_reviews_ltm",
+                      "first_review", "name", "host_identity_verified",
+                      "review_scores_accuracy", "review_scores_cleanliness",
+                      "review_scores_checkin", "review_scores_communication",
+                      "review_scores_location", "review_scores_value",
+                      "instant_bookable","reviews_per_month", "latitude",
+                      "longitude", "accommodates",
+                      "description", "neighborhood_overview",
+                      "host_since", "host_about", "host_response_time",
+                      "host_response_rate", "host_acceptance_rate",
+                      "host_is_superhost", "host_has_profile_pic")
+```
+Features noted but not in the 2019 dataset: bathrooms_text, number_of_reviews_l30d
+Note: Features tend to change between  datasets
+
+```{r}
+raw_features = raw_data %>% 
+  select(all_of(feature_candidates)) %>% 
+  filter(number_of_reviews_ltm > 0, as.numeric(first_review) < first_review_cutoff)
+```
+
+### Converting prices to numeric values and adding flat_size
+flat_size: A grouping where L means large flats (more than 4 guest) and S means small flats for up to 4 guests.
+```{r}
+#Converting string price to doubles and removing junk
+raw_features = raw_features %>% filter(!is.na(price)) %>%
+  mutate(num_price = as.numeric(str_replace_all(str_sub(price, 2), ",", "")) / accommodates) %>%
+  filter(num_price > 5)
+```
+
+### Adding regional price levels 1 - cheapest, 3 - most expensive
+```{r}
+get_price_level = function(price, p1, p2) {
+  return(ifelse(price <= p1, "1",
+         ifelse(price <= p2, "2", "3")))
+         
+}
+
+price_groups = raw_features %>% 
+  group_by(.dots=c("neighbourhood_cleansed")) %>%
+  summarize(p1 = quantile(num_price, .80), p2 = quantile(num_price, .97))
+
+price_features = left_join(raw_features, price_groups, by = c("neighbourhood_cleansed"))
+price_features = price_features %>% mutate(price_level = get_price_level(num_price, p1, p2))
+```
+
+### Adding flat_size and listing type to the dataset
+Feel free to adjust these for groupings of your choice
+```{r}
+price_features = price_features %>%  mutate(
+  flat_size = if_else(accommodates > 4, "L", "S"),
+  listing_type = if_else(room_type == "Entire home/apt", "house", "room"))
+```
+
+### Adding KPIs to the dataset
+```{r}
+get_kpi = function(number_of_reviews, last_scraped, first_review, avg_stay) {
+  day_delta = round(as.numeric(difftime(last_scraped, first_review, units="days")))
+  occupancy_rate = number_of_reviews * avg_stay / day_delta
+  return(if_else(occupancy_rate > 1, 1, occupancy_rate))
+}
+
+kpi_data = price_features %>% mutate(
+  kpi = get_kpi(number_of_reviews, last_scraped, first_review, avg_stay))
+```
+
+### Adding good and bad perforance to the dataset
+```{r}
+get_performance_level = function(kpi) {
+  return(ifelse(kpi <= quantile(kpi, .25), "low",
+         ifelse(kpi <= quantile(kpi, .50), "avg",
+         ifelse(kpi <= quantile(kpi, .75), "avg", "high"))))
+}
+kpi_data = kpi_data %>% mutate(
+  kpi_score = get_performance_level(kpi))
+```
+
+### Adding amenities
+```{r}
+trim_amenities = function(amenity) {
+  regex = regex("([}{\"])|(translation missing:.*)|[â€™]|(\\(s\\))")
+  a1 = str_replace_all(amenity, regex, "")
+  a2 = tolower(str_replace_all(a1, "[/  -]", "_"))
+  a3 = str_replace_all(a2, regex(",,"), ",")
+  return(trimws(a3, whitespace=","))
+}
+
+kpi_data = kpi_data %>% mutate(a = trim_amenities(amenities))
+wide_data = cSplit_e(kpi_data, "a", ",", type = "character", fill = 0, drop = F)
+```
+
+### Distribution of airbnb listing prices across boroughs
+Based on the fact that prices in boroughs are skewed to the left we can split them between 3 groups of 0-80% for most flats, 81% - 96% for expensive flats and 97%+ flats for the most expensive outliers.
+```{r}
+ggplot(wide_data)+
+  geom_density(aes(x=num_price), size=1, fill="lightblue", alpha=0.5)+
+  scale_x_continuous(limits = c(0, 100), name="Price Per Night")+
+  scale_y_continuous(name="Density")+
+  facet_wrap(vars(neighbourhood_cleansed))+
+  theme(axis.text=element_blank(), axis.ticks=element_blank(),
+        panel.grid=element_blank())
+```
+### Adding amenity scores
+```{r}
+col_indices = function(cols, data=wide_data) {
+  return(which(colnames(data) %in% cols))
+}
+
+safety_amnts = c("a_carbon_monoxide_detector", "a_first_aid_kit", "a_lock_on_bedroom_door",
+           "a_building_staff", "a_lockbox", "a_safety_card", "a_smoke_detector", "a_fire_extinguisher", "a_fireplace_guards", "a_window_guards", "a_accessible_height_toilet", "a_fixed_grab_bars_for_shower", "a_step_free_shower")
+
+access_amnts = c("a_accessible_height_bed", "a_disabled_parking_spot", "a_fixed_grab_bars_for_toilet", "a_no_stairs_or_steps_to_enter", "a_wheelchair_accessible", "a_building_staff", "a_ground_floor_access")
+
+comfort_amnts = c("a_essentials", "a_air_conditioning", "a_balcony", "a_bidet", "a_buzzer_wireless_intercom", "a_ceiling_fan", "a_central_air_conditioning", "a_dryer", "a_heat_lamps", "a_iron", "a_jetted_tub", "a_long_term_stays_allowed", "a_memory_foam_mattress", "a_rain_shower", "a_room_darkening_shades", "a_24_hour_check_in", "a_air_purifier", "a_extra_space_around_bed", "a_heated_floors", "a_hot_tub", "a_luggage_dropoff_allowed", "a_patio_or_balcony", "a_terrace")
+
+children_amnts = c("a_baby_bath", "a_babysitter_recommendations", "a_childrens_books_and_toys", "a_crib", "a_family_kid_friendly", "a_baby_monitor")
+
+cooking_amnts = c("a_bread_maker", "a_bbq_grill","a_convection_oven", "a_dishwasher", "a_gas_oven", "a_kitchen", "a_mini_fridge", "a_steam_oven", "a_stove", "a_breakfast", "a_coffee_maker", "a_cooking_basics", "a_dishes_and_silverware", "a_espresso_machine", "a_full_kitchen", "a_microwave", "a_oven", "a_wine_cooler")
+
+work_amnts = c("a_printer", "a_ethernet_connection", "a_fax_machine", "a_high_resolution_computer_monitor", "a_internet", "a_wifi")
+
+leisure_amnts = c("a_bbq_grill", "a_game_console", "a_gym", "a_hammock", "a_indoor_fireplace", "a_pool", "a_sauna", "a_shared_pool", "a_smart_tv", "a_sound_system", "a_tennis_court", "a_amazon_echo", "a_cable_tv", "a_dvd_player", "a_exercise_equipment", "a_fire_pit", "a_garden_or_backyard", "a_hbo_go", "a_internet", "a_netflix", "a_projector_and_screen", "a_shared_gym",  "a_suitable_for_events", "a_tv", "a_wifi")
+
+safety_cols = col_indices(safety_amnts)
+access_cols = col_indices(access_amnts)
+comfort_cols = col_indices(comfort_amnts)
+children_cols = col_indices(children_amnts)
+cooking_cols = col_indices(cooking_amnts)
+work_cols = col_indices(work_amnts)
+leisure_cols = col_indices(leisure_amnts)
+
+wide_data = wide_data %>% mutate(safety = rowSums(.[safety_cols])/length(safety_amnts),
+                     access = rowSums(.[access_cols])/length(access_amnts),
+                     comfort = rowSums(.[comfort_cols])/length(comfort_amnts),
+                     children = rowSums(.[children_cols])/length(children_amnts),
+                     cooking = rowSums(.[cooking_cols])/length(cooking_amnts),
+                     work = rowSums(.[work_cols])/length(work_amnts),
+                     leisure = rowSums(.[leisure_cols])/length(leisure_amnts))
+```
+
+
+```{r}
+wide_data = wide_data %>% mutate(listing_type = if_else(room_type == "Entire home/apt", "house", "room"))
+
+radar2 = wide_data %>% filter(kpi_score %in% c("low","high")) %>% select(listing_type, kpi_score, safety, access, comfort, children, cooking, work, leisure)
+radar_plot = ggRadar(data=radar2, alpha=0.05, mapping=aes(facet=listing_type, color=kpi_score), size=3)+
+  theme(legend.position="bottom", axis.ticks=element_blank(),
+        axis.text.y=element_blank(), panel.background = element_rect(color="black", fill="white"),
+        panel.grid = element_line(linetype = 2, color="grey"), axis.text.x=element_text(face="bold", size=12))
+              
+radar_plot
+```
+
+# Getting relevant review columns
+```{r}
+review_cols = c("price_level","kpi_score","review_scores_cleanliness",
+                      "review_scores_location", "review_scores_value"
+                      )
+
+review_data = wide_data %>% 
+  select(all_of(review_cols)) %>% 
+  filter(kpi_score != "avg")
+
+review_data <- review_data %>% group_by(price_level, kpi_score) %>% 
+  summarise(
+    cleanliness = mean(na.omit(review_scores_cleanliness)),
+    location = mean(na.omit(review_scores_location)),
+    value = mean(na.omit(review_scores_value))
+  )
+```
+
+# Reviews Lineup
+```{r}
+lineup(review_data)
+```
