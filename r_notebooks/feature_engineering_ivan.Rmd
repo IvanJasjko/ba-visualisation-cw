@@ -136,7 +136,64 @@ kpi_data = kpi_data %>% mutate(a = trim_amenities(amenities))
 wide_data = cSplit_e(kpi_data, "a", ",", type = "character", fill = 0, drop = F)
 ```
 
-# Work below:
+### Distribution of airbnb listing prices across boroughs
+Based on the fact that prices in boroughs are skewed to the left we can split them between 3 groups of 0-80% for most flats, 81% - 96% for expensive flats and 97%+ flats for the most expensive outliers.
 ```{r}
-head(wide_data, 5)
+ggplot(wide_data)+
+  geom_density(aes(x=num_price), size=1, fill="lightblue", alpha=0.5)+
+  scale_x_continuous(limits = c(0, 100), name="Price Per Night")+
+  scale_y_continuous(name="Density")+
+  facet_wrap(vars(neighbourhood_cleansed))+
+  theme(axis.text=element_blank(), axis.ticks=element_blank(),
+        panel.grid=element_blank())
+```
+### Adding amenity scores
+```{r}
+col_indices = function(cols, data=wide_data) {
+  return(which(colnames(data) %in% cols))
+}
+
+safety_amnts = c("a_carbon_monoxide_detector", "a_first_aid_kit", "a_lock_on_bedroom_door",
+           "a_building_staff", "a_lockbox", "a_safety_card", "a_smoke_detector", "a_fire_extinguisher", "a_fireplace_guards", "a_window_guards", "a_accessible_height_toilet", "a_fixed_grab_bars_for_shower", "a_step_free_shower")
+
+access_amnts = c("a_accessible_height_bed", "a_disabled_parking_spot", "a_fixed_grab_bars_for_toilet", "a_no_stairs_or_steps_to_enter", "a_wheelchair_accessible", "a_building_staff", "a_ground_floor_access")
+
+comfort_amnts = c("a_essentials", "a_air_conditioning", "a_balcony", "a_bidet", "a_buzzer_wireless_intercom", "a_ceiling_fan", "a_central_air_conditioning", "a_dryer", "a_heat_lamps", "a_iron", "a_jetted_tub", "a_long_term_stays_allowed", "a_memory_foam_mattress", "a_rain_shower", "a_room_darkening_shades", "a_24_hour_check_in", "a_air_purifier", "a_extra_space_around_bed", "a_heated_floors", "a_hot_tub", "a_luggage_dropoff_allowed", "a_patio_or_balcony", "a_terrace")
+
+children_amnts = c("a_baby_bath", "a_babysitter_recommendations", "a_childrens_books_and_toys", "a_crib", "a_family_kid_friendly", "a_baby_monitor")
+
+cooking_amnts = c("a_bread_maker", "a_bbq_grill","a_convection_oven", "a_dishwasher", "a_gas_oven", "a_kitchen", "a_mini_fridge", "a_steam_oven", "a_stove", "a_breakfast", "a_coffee_maker", "a_cooking_basics", "a_dishes_and_silverware", "a_espresso_machine", "a_full_kitchen", "a_microwave", "a_oven", "a_wine_cooler")
+
+work_amnts = c("a_printer", "a_ethernet_connection", "a_fax_machine", "a_high_resolution_computer_monitor", "a_internet", "a_wifi")
+
+leisure_amnts = c("a_bbq_grill", "a_game_console", "a_gym", "a_hammock", "a_indoor_fireplace", "a_pool", "a_sauna", "a_shared_pool", "a_smart_tv", "a_sound_system", "a_tennis_court", "a_amazon_echo", "a_cable_tv", "a_dvd_player", "a_exercise_equipment", "a_fire_pit", "a_garden_or_backyard", "a_hbo_go", "a_internet", "a_netflix", "a_projector_and_screen", "a_shared_gym",  "a_suitable_for_events", "a_tv", "a_wifi")
+
+safety_cols = col_indices(safety_amnts)
+access_cols = col_indices(access_amnts)
+comfort_cols = col_indices(comfort_amnts)
+children_cols = col_indices(children_amnts)
+cooking_cols = col_indices(cooking_amnts)
+work_cols = col_indices(work_amnts)
+leisure_cols = col_indices(leisure_amnts)
+
+wide_data = wide_data %>% mutate(safety = rowSums(.[safety_cols])/length(safety_amnts),
+                     access = rowSums(.[access_cols])/length(access_amnts),
+                     comfort = rowSums(.[comfort_cols])/length(comfort_amnts),
+                     children = rowSums(.[children_cols])/length(children_amnts),
+                     cooking = rowSums(.[cooking_cols])/length(cooking_amnts),
+                     work = rowSums(.[work_cols])/length(work_amnts),
+                     leisure = rowSums(.[leisure_cols])/length(leisure_amnts))
+```
+
+
+```{r}
+wide_data = wide_data %>% mutate(listing_type = if_else(room_type == "Entire home/apt", "house", "room"))
+
+radar2 = wide_data %>% filter(kpi_score %in% c("low","high")) %>% select(listing_type, kpi_score, safety, access, comfort, children, cooking, work, leisure)
+radar_plot = ggRadar(data=radar2, alpha=0.05, mapping=aes(facet=listing_type, color=kpi_score), size=3)+
+  theme(legend.position="bottom", axis.ticks=element_blank(),
+        axis.text.y=element_blank(), panel.background = element_rect(color="black", fill="white"),
+        panel.grid = element_line(linetype = 2, color="grey"), axis.text.x=element_text(face="bold", size=12))
+              
+radar_plot
 ```
