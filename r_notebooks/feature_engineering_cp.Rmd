@@ -11,10 +11,12 @@ editor_options:
 Scraped London listings in Airbnb from Dec 7 2019.
 
 ```{r}
-requirements <- c("ggplot2", "dplyr", "stringr", "tidyr", "ggrepel", "splitstackshape", "devtools")
+requirements <- c("ggplot2", "dplyr", "stringr", "tidyr", "ggrepel", "splitstackshape", "devtools", "lineupjs")
 missing_reqs <- requirements[!(requirements %in% installed.packages()[,"Package"])]
 
+# Uncomment following lines to install additional dependencies:
 #devtools::install_github("cardiomoon/ggiraphExtra")
+#devtools::install_github("datavisyn/lineup_htmlwidget")
 ```
 
 
