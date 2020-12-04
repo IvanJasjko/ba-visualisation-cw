@@ -7,7 +7,7 @@ output:
 Scraped London listings in Airbnb from Dec 7 2019.
 
 ```{r}
-requirements <- c("ggplot2", "dplyr", "stringr", "tidyr", "ggrepel", "splitstackshape", "stringr","RColorBrewer","OIdata")
+requirements <- c("ggplot2", "dplyr", "stringr", "tidyr", "ggrepel", "splitstackshape", "stringr","RColorBrewer","OIdata","plotly")
 missing_reqs <- requirements[!(requirements %in% installed.packages()[,"Package"])]
 if(length(missing_reqs)) install.packages(missing_reqs)
 ```
@@ -23,6 +23,7 @@ library(splitstackshape)
 library(stringr)
 library(RColorBrewer)
 library(OIdata)
+library(plotly)
 ```
 
 ### Importing csv file
@@ -126,88 +127,232 @@ kpi_data = kpi_data %>% mutate(a = trim_amenities(amenities))
 wide_data = cSplit_e(kpi_data, "a", ",", type = "character", fill = 0, drop = F)
 ```
 
-### Looking at postings info
-```{r}
-#"name", "instant_bookable", "description", "neighborhood_overview", "minimum_nights",
-#"maximum_nights", "availability_30", "accommodates"
 
+### Looking at postings information
+In this part, we will be looking at the impact on the performance of words in the description of Airbnb's listings per neighbourhood. We will also factor in the number of listings per neighbourhood so that we can see the importance of each word.
+For that we grouped the descriptions per neighbourhood and per kpi score of low or high. Then we split these descriptions per word to be able to count their frequency. 
+The end dataframe has the highest frequency word per neighbourhood for low and for high performance.
+```{r}
+## I chose to perform the analysis on the description, as it is a main part of the listing, but the following analysis could also have been done for the summary, the name, the neighborhood_overview, the notes and the house rules.
+
+#this function concatenates texts
 p <- function(v) {
   Reduce(f=paste, x = v)
 }
-
+#selecting a subset of the dataframe to work with. I am using the column chosen by the function, the neighbourhoods and the kpi score (only low and high, not the average), which is all I need for this analysis 
 description_analysis=kpi_data %>%
   select(neighbourhood_cleansed, description,kpi_score) %>%
   filter(kpi_score=="low"| kpi_score=="high")
+
+#putting all the text to lower case to be able to compare words
 description_analysis$description_cleansed=str_to_lower(description_analysis$description)
+
+#grouping the strings by neighbourhood and kpi score
 description_analysis=description_analysis %>%
   group_by(neighbourhood_cleansed,kpi_score) %>%
-  summarise(descrip = p(description_cleansed))
-description_analysis$descrip=str_replace_all(description_analysis$descrip, "[^[:alnum:]]", "")
+  summarise(descrip = p(description_cleansed), nbr_listings=n()) 
+
+#splitting the text by word
 description_analysis$descrip=str_split(description_analysis$descrip, boundary("word"))
-```
 
-```{r}
-#summary, name, experiences_offered,neighborhood_overview,notes,transit,access,interaction,house_rules,instant_bookable
-```
+#list of words that do not give any insights and are frequent and should be not taken into account
+ignore_words=c("the","a","is","to","and","with","in","of","for","from","are","will","our","you","your","it","by","be","we","on","very","or","has","have","this","at","can","room","an","its","london","there","flat","house","apartment","bedroom","kitchen","all","bed","double","as","i","bathroom","2","area","large","living","home","street","station","away","close","my","also","guests","one","located","access","minute","if","provide","which","minutes")
 
-
-```{r}
-description_best <- data.frame(matrix(ncol = 3, nrow = 33))
-colnames(description_best) <- c('neighbourhood', 'high_kpi_descript', 'low_kpi_descript')
+description_best <- data.frame(matrix(ncol = 4, nrow = 33))
+colnames(description_best) <- c('neighbourhood', 'high_kpi_descript', 'low_kpi_descript','nbr_listings')
 j=1
 for (i in 1:nrow(description_analysis)){
-  description_analysis$descrip[[i]]=description_analysis$descrip[[i]][!description_analysis$descrip[[i]] %in% c("the","a","is","to","and","with","in","of","for","from","are","will","our","you","your","it","by","be","we","on","very","or","has","have","this","at","can","room")]
+  #taking out basic words that do not give any insights
+  description_analysis$descrip[[i]]=description_analysis$descrip[[i]][!description_analysis$descrip[[i]] %in% ignore_words]
+  #selecting the most frequent word for high and low kpi per neighbourhood
+  #as the data is organised first by kpi=high and then kpi=low, this if/else structure allows to regroup easily on one row the 2
   if(description_analysis$kpi_score[[i]]=="high"){
     description_best$neighbourhood[j]=description_analysis$neighbourhood_cleansed[[i]]
-    description_best$high_kpi_descript[j]=sort(table(description_analysis$descrip[[i]]),decreasing = TRUE)[1]
+    description_best$high_kpi_descript[j]=as.character(as.data.frame(sort(table(description_analysis$descrip[[i]]),decreasing = TRUE))[1,1])
+    description_best$nbr_listings[j]=description_analysis$nbr_listings[[i]]
   }
   else{
-    description_best$low_kpi_descript[j]=sort(table(description_analysis$descrip[[i]]),decreasing = TRUE)[1]
+    description_best$low_kpi_descript[j]=as.character(as.data.frame(sort(table(description_analysis$descrip[[i]]),decreasing = TRUE))[1,1])
+    description_best$nbr_listings[j]=description_best$nbr_listings[j]+description_analysis$nbr_listings[[i]]
     j=j+1
   }
 }
 
 ```
 
+Then, after loading the coordinates of the London's boroughs and making a few adjustments to the neighbourhoods' name so that we can merge this dataset with my dataset, we calculate the mean longitude and latitude so that we have a point for each neighbourhood to place the word on the map.
+Then we plot the two maps, with the words per neighbourhood in each neighbourhood and the color gradient for the number of listings in each neighbourhood.
 
 ```{r}
-description_best
-unique(description_analysis$descrip[[1]])
-#sort(table(description_analysis$descrip[[i]]),decreasing = TRUE)
-```
-
-
-
-```{r}
+#replacing & for "and" and deleting " upon Thames" from the neighbourhood to be able to merge my dataset and the map
 data(london_boroughs)
 LB=london_boroughs
 LB$name=gsub( "&", "and",LB$name)  #to make them match with our dataset
+description_best$neighbourhood=gsub(" upon Thames","",description_best$neighbourhood) 
 # merge datasets together
 text_map <- LB %>% 
   left_join(description_best, by = c("name"="neighbourhood"))
 text_map=na.omit(text_map) #delete rows with NA is resulting join
 
+#get the mean of longitude and latitude to put the selected word in that position.
 summary=text_map %>% 
   group_by(name) %>% 
   summarise(mean_long = mean(x),
             mean_lat = mean(y),
             low_kpi_descript = first(low_kpi_descript),
-            high_kpi_descript = first(high_kpi_descript))
+            high_kpi_descript = first(high_kpi_descript),
+            nbr_listings=first(nbr_listings))
 
+#for those 4 cases, moving the text a bit so that everything is visible in the end map
+summary[summary['name']=='Hammersmith and Fulham','mean_lat']=summary[summary['name']=='Hammersmith and Fulham','mean_lat']-1000
+summary[summary['name']=='Wandsworth','mean_long']=summary[summary['name']=='Wandsworth','mean_long']-1000
+summary[summary['name']=='Hackney','mean_lat']=summary[summary['name']=='Hackney','mean_lat']-1000
+summary[summary['name']=='Islington','mean_lat']=summary[summary['name']=='Islington','mean_lat']+1500
 
-# London map
-ggplot()+geom_polygon(data=text_map, aes(x=x, y=y, group = name),colour="grey", fill="white") +
-  geom_text(data=summary,aes(x=mean_long, y=mean_lat, label = high_kpi_descript ))
+# Plotting london map for high kpi
+ggplot()+geom_polygon(data=text_map, aes(x=x, y=y, group = name, fill=nbr_listings),colour="grey") +
+  geom_text(data=summary,aes(x=mean_long, y=mean_lat, label = high_kpi_descript), size=3.5, fontface="bold")+
+  scale_fill_gradient(low = 'white', high = 'dodgerblue') + 
+  theme(axis.line=element_blank(),axis.text.x=element_blank(),
+          axis.text.y=element_blank(),axis.ticks=element_blank(),
+          axis.title.x=element_blank(),
+          axis.title.y=element_blank(),
+          plot.title = element_text(face="bold"),
+          panel.background=element_blank(),panel.border=element_blank(),panel.grid.major=element_blank(),
+          panel.grid.minor=element_blank(),plot.background=element_blank())+
+    labs(title = "Most frequent word in listing's description by London Boroughs",
+                subtitle = "For high performing AirBnBs")
+#ggsave('london_boroughs_high.png')
 
+# Plotting london map for low kpi
+ggplot()+geom_polygon(data=text_map, aes(x=x, y=y, group = name, fill=nbr_listings),colour="grey") +
+  geom_text(data=summary,aes(x=mean_long, y=mean_lat, label = low_kpi_descript), size=3.5, fontface="bold")+
+  scale_fill_gradient(low = 'white', high = 'dodgerblue') +
+  theme(axis.line=element_blank(),axis.text.x=element_blank(),
+          axis.text.y=element_blank(),axis.ticks=element_blank(),
+          axis.title.x=element_blank(),
+          axis.title.y=element_blank(),
+          plot.title = element_text(face="bold"),
+          panel.background=element_blank(),panel.border=element_blank(),panel.grid.major=element_blank(),
+          panel.grid.minor=element_blank(),plot.background=element_blank())+
+    labs(title = "Most frequent word in listing's description by London Boroughs",
+                subtitle = "For low performing AirBnBs")
+
+#ggsave('london_boroughs_low.png')
 ```
 
 
 ```{r}
+# I will create a function so that the text map can be produced for different column with string data.
+col_name='neighborhood_overview'
 data(london_boroughs)
 LB=london_boroughs
-LB$name=gsub( "&", "and",LB$name)
-LB
+#getting the london boroughs map
+
+p <- function(v) {
+  Reduce(f=paste, x = v)
+}
+
+#selecting and grouping the data :
+data_select<-function(col_name,kpi_data) {
+  #selecting a subset of the dataframe to work with. I am using the column chosen by the function, the neighbourhoods and the kpi score (only low and high, not the average), which is all I need for this analysis 
+  col_analysis=kpi_data %>%
+    select(neighbourhood_cleansed, col_name ,kpi_score) %>%
+    filter(kpi_score=="low"| kpi_score=="high")
+  
+  #putting all the text to lower case to be able to compare words
+  col_analysis$col_cleansed=str_to_lower(col_analysis[col_name])
+  
+  #grouping the strings by neighbourhood and kpi score
+  col_analysis=col_analysis %>%
+    group_by(neighbourhood_cleansed,kpi_score) %>%
+    summarise(col = p(col_cleansed), nbr_listings=n()) 
+  
+  #splitting the text by word
+  col_analysis$col=str_split(col_analysis$col, boundary("word"))
+  
+  col_best <- data.frame(matrix(ncol = 4, nrow = 33))
+  colnames(col_best) <- c('neighbourhood', 'high_kpi', 'low_kpi','nbr_listings')
+  j=1
+  for (i in 1:nrow(col_analysis)){
+    #taking out basic words that do not give any insights
+    col_analysis$col[[i]]=col_analysis$col[[i]][!col_analysis$col[[i]] %in% c("the","a","is","to","and","with","in","of","for","from","are","will","our","you","your","it","by","be","we","on","very","or","has","have","this","at","can","room","an","its","london","there","flat","house","apartment","bedroom","kitchen","all","bed","double","as","i","bathroom","2","area","large","living","home","street","station","away","close","my","also","guests","one","located","access","minute","if","provide","which","minutes")]
+    #selecting the most frequent word for high and low kpi per neighbourhood
+    # as the data is organised first by kpi=high and then kpi=low, this if/else structure allows to regroup easily on one row the 2
+    if(col_analysis$kpi_score[[i]]=="high"){
+      col_best$neighbourhood[j]=col_analysis$neighbourhood_cleansed[[i]]
+      col_best$high_kpi[j]=as.character(as.data.frame(sort(table(col_analysis$col[[i]]),decreasing = TRUE))[1,1])
+      col_best$nbr_listings[j]=col_analysis$nbr_listings[[i]]
+    }
+    else{
+      col_best$low_kpi[j]=as.character(as.data.frame(sort(table(col_analysis$col[[i]]),decreasing = TRUE))[1,1])
+      col_best$nbr_listings[j]=col_best$nbr_listings[j]+col_analysis$nbr_listings[[i]]
+      j=j+1
+    }
+  }
+  return (col_best)
+}
+
+#merging the london boroughs maps with col_best
+prepare_maps_data<-function(LB,col_best){
+  #replacing & for "and" and deleting " upon Thames" from the neighbourhood to be able to merge my dataset and the map
+  LB$name=gsub( "&", "and",LB$name)  #to make them match with our dataset
+  col_best$neighbourhood=gsub(" upon Thames","",col_best$neighbourhood) 
+  
+  # merge datasets together
+  text_map <- LB %>% 
+    left_join(col_best, by = c("name"="neighbourhood"))
+  text_map=na.omit(text_map) #delete rows with NA is resulting join
+  
+  #get the mean of longitude and latitude to put the selected word in that position.
+  summary=text_map %>% 
+    group_by(name) %>% 
+    summarise(mean_long = mean(x),
+              mean_lat = mean(y),
+              low_kpi = first(low_kpi),
+              high_kpit = first(high_kpi),
+              nbr_listings=first(nbr_listings))
+  
+  
+  #for those 4 cases, moving the text a bit so that everything is visible in the end map
+  summary[summary['name']=='Hammersmith and Fulham','mean_lat']=summary[summary['name']=='Hammersmith and Fulham','mean_lat']-1000
+  summary[summary['name']=='Wandsworth','mean_long']=summary[summary['name']=='Wandsworth','mean_long']-1000
+  summary[summary['name']=='Hackney','mean_lat']=summary[summary['name']=='Hackney','mean_lat']-1000
+  summary[summary['name']=='Islington','mean_lat']=summary[summary['name']=='Islington','mean_lat']+1500
+  return (summary)
+}
+
+text_map<-function(col_name,kpi_data){
+  col_best=data_select(col_name,kpi_data)
+  summary=prepare_maps_data(LB,col_best)
+  
+  # Plotting london map for high kpi
+  ggplot()+geom_polygon(data=text_map, aes(x=x, y=y, group = name, fill=nbr_listings),colour="grey") +
+    geom_text(data=summary,aes(x=mean_long, y=mean_lat, label = high_kpi), size=3.5, fontface="bold")+
+    scale_fill_gradient(low = 'white', high = 'dodgerblue') + 
+    theme(axis.line=element_blank(),axis.text.x=element_blank(),
+            axis.text.y=element_blank(),axis.ticks=element_blank(),
+            axis.title.x=element_blank(),
+            axis.title.y=element_blank(),
+            plot.title = element_text(face="bold"),
+            panel.background=element_blank(),panel.border=element_blank(),panel.grid.major=element_blank(),
+            panel.grid.minor=element_blank(),plot.background=element_blank())+
+      labs(title = "Most frequent word in listing's description by London Boroughs",
+                  subtitle = "For high performing Airbnbs")
+  
+  # Plotting london map for low kpi
+  ggplot()+geom_polygon(data=text_map, aes(x=x, y=y, group = name, fill=nbr_listings),colour="grey") +
+    geom_text(data=summary,aes(x=mean_long, y=mean_lat, label = low_kpi), size=3.5, fontface="bold")+
+    scale_fill_gradient(low = 'white', high = 'dodgerblue') +
+    theme(axis.line=element_blank(),axis.text.x=element_blank(),
+            axis.text.y=element_blank(),axis.ticks=element_blank(),
+            axis.title.x=element_blank(),
+            axis.title.y=element_blank(),
+            plot.title = element_text(face="bold"),
+            panel.background=element_blank(),panel.border=element_blank(),panel.grid.major=element_blank(),
+            panel.grid.minor=element_blank(),plot.background=element_blank())+
+      labs(title = "Most frequent word in listing's description by London Boroughs",
+                  subtitle = "For low performing Airbnbs")
+
+}
 ```
-
-
-
