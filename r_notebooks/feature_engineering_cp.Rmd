@@ -27,6 +27,7 @@ library(ggrepel)
 library(splitstackshape)
 library(ggiraphExtra)
 library(lineupjs)
+library(ggridges)
 ```
 
 ### Importing csv file
@@ -200,6 +201,7 @@ radar_plot
 ```
 
 # Getting relevant review columns
+Filtering dataset to obtain relevant columns that are used for for our analysis. Grouping data to get mean reveiw scores across categories.
 ```{r}
 review_cols = c("price_level","kpi_score","review_scores_cleanliness",
                       "kpi_score","review_scores_communication","review_scores_location",
@@ -210,7 +212,7 @@ review_data = wide_data %>%
   select(all_of(review_cols)) %>% 
   filter(kpi_score != "avg")
 
-review_data <- review_data %>% group_by(price_level, kpi_score) %>% 
+review_data_sum <- review_data %>% group_by(price_level, kpi_score) %>% 
   summarise(
     cleanliness = mean(na.omit(review_scores_cleanliness)),
     communication = mean(na.omit(review_scores_communication)),
@@ -218,8 +220,24 @@ review_data <- review_data %>% group_by(price_level, kpi_score) %>%
     value = mean(na.omit(review_scores_value))
   )
 ```
+# Plotting distribution of reviews across price levels and occupancy rates
+```{r}
+rd <- review_data %>% 
+  pivot_longer(cols=c("review_scores_cleanliness", "review_scores_communication", "review_scores_location", "review_scores_value"),names_to="type",values_to="score") %>% unite(kpi_type, c("kpi_score","type"))
+
+ggplot(rd, aes(y=kpi_type, x=score,  fill=kpi_type)) +
+    geom_density_ridges(alpha=0.6, stat="binline", bins=10, scale=0.9) +
+    theme_ridges() +
+    theme(
+      legend.position="none",
+      panel.spacing = unit(0.5, "lines"),
+      strip.text.x = element_text(size = 8)
+    )
+```
+
 
 # Reviews Lineup
+Comparison of mean review scores across price and occupancy levels.
 ```{r}
-lineup(review_data)
+lineup(review_data_sum)
 ```
